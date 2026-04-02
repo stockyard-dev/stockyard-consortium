@@ -23,5 +23,27 @@ func now()string{return time.Now().UTC().Format(time.RFC3339)}
 func(d *DB)Create(e *Vendor)error{e.ID=genID();e.CreatedAt=now();_,err:=d.db.Exec(`INSERT INTO vendors(id,name,contact_name,email,phone,category,contract_end,annual_spend,status,notes,created_at)VALUES(?,?,?,?,?,?,?,?,?,?,?)`,e.ID,e.Name,e.ContactName,e.Email,e.Phone,e.Category,e.ContractEnd,e.AnnualSpend,e.Status,e.Notes,e.CreatedAt);return err}
 func(d *DB)Get(id string)*Vendor{var e Vendor;if d.db.QueryRow(`SELECT id,name,contact_name,email,phone,category,contract_end,annual_spend,status,notes,created_at FROM vendors WHERE id=?`,id).Scan(&e.ID,&e.Name,&e.ContactName,&e.Email,&e.Phone,&e.Category,&e.ContractEnd,&e.AnnualSpend,&e.Status,&e.Notes,&e.CreatedAt)!=nil{return nil};return &e}
 func(d *DB)List()[]Vendor{rows,_:=d.db.Query(`SELECT id,name,contact_name,email,phone,category,contract_end,annual_spend,status,notes,created_at FROM vendors ORDER BY created_at DESC`);if rows==nil{return nil};defer rows.Close();var o []Vendor;for rows.Next(){var e Vendor;rows.Scan(&e.ID,&e.Name,&e.ContactName,&e.Email,&e.Phone,&e.Category,&e.ContractEnd,&e.AnnualSpend,&e.Status,&e.Notes,&e.CreatedAt);o=append(o,e)};return o}
+func(d *DB)Update(e *Vendor)error{_,err:=d.db.Exec(`UPDATE vendors SET name=?,contact_name=?,email=?,phone=?,category=?,contract_end=?,annual_spend=?,status=?,notes=? WHERE id=?`,e.Name,e.ContactName,e.Email,e.Phone,e.Category,e.ContractEnd,e.AnnualSpend,e.Status,e.Notes,e.ID);return err}
 func(d *DB)Delete(id string)error{_,err:=d.db.Exec(`DELETE FROM vendors WHERE id=?`,id);return err}
 func(d *DB)Count()int{var n int;d.db.QueryRow(`SELECT COUNT(*) FROM vendors`).Scan(&n);return n}
+
+func(d *DB)Search(q string, filters map[string]string)[]Vendor{
+    where:="1=1"
+    args:=[]any{}
+    if q!=""{
+        where+=" AND (name LIKE ? OR email LIKE ?)"
+        args=append(args,"%"+q+"%");args=append(args,"%"+q+"%");
+    }
+    if v,ok:=filters["category"];ok&&v!=""{where+=" AND category=?";args=append(args,v)}
+    if v,ok:=filters["status"];ok&&v!=""{where+=" AND status=?";args=append(args,v)}
+    rows,_:=d.db.Query(`SELECT id,name,contact_name,email,phone,category,contract_end,annual_spend,status,notes,created_at FROM vendors WHERE `+where+` ORDER BY created_at DESC`,args...)
+    if rows==nil{return nil};defer rows.Close()
+    var o []Vendor;for rows.Next(){var e Vendor;rows.Scan(&e.ID,&e.Name,&e.ContactName,&e.Email,&e.Phone,&e.Category,&e.ContractEnd,&e.AnnualSpend,&e.Status,&e.Notes,&e.CreatedAt);o=append(o,e)};return o
+}
+
+func(d *DB)Stats()map[string]any{
+    m:=map[string]any{"total":d.Count()}
+    rows,_:=d.db.Query(`SELECT status,COUNT(*) FROM vendors GROUP BY status`)
+    if rows!=nil{defer rows.Close();by:=map[string]int{};for rows.Next(){var s string;var c int;rows.Scan(&s,&c);by[s]=c};m["by_status"]=by}
+    return m
+}
