@@ -1,11 +1,23 @@
 package store
-import("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
-type DB struct{*sql.DB}
-type Vendor struct{ID int64 `json:"id"`;Name string `json:"name"`;Category string `json:"category"`;Contact string `json:"contact"`;Email string `json:"email"`;SLADays int `json:"sla_days"`;RenewalDate string `json:"renewal_date"`;MonthlyCostCents int64 `json:"monthly_cost_cents"`;Notes string `json:"notes"`;CreatedAt time.Time `json:"created_at"`}
-func Open(d string)(*DB,error){os.MkdirAll(d,0755);dsn:=filepath.Join(d,"consortium.db")+"?_journal_mode=WAL&_busy_timeout=5000";db,err:=sql.Open("sqlite",dsn);if err!=nil{return nil,fmt.Errorf("open: %w",err)};db.SetMaxOpenConns(1);migrate(db);return &DB{db},nil}
-func migrate(db *sql.DB){db.Exec(`CREATE TABLE IF NOT EXISTS vendors(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,category TEXT DEFAULT 'other',contact TEXT DEFAULT '',email TEXT DEFAULT '',sla_days INTEGER DEFAULT 0,renewal_date TEXT DEFAULT '',monthly_cost_cents INTEGER DEFAULT 0,notes TEXT DEFAULT '',created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)}
-func(db *DB)Create(v *Vendor)error{res,err:=db.Exec(`INSERT INTO vendors(name,category,contact,email,sla_days,renewal_date,monthly_cost_cents,notes)VALUES(?,?,?,?,?,?,?,?)`,v.Name,v.Category,v.Contact,v.Email,v.SLADays,v.RenewalDate,v.MonthlyCostCents,v.Notes);if err!=nil{return err};v.ID,_=res.LastInsertId();return nil}
-func(db *DB)List(q string)([]Vendor,error){base:=`SELECT id,name,category,contact,email,sla_days,renewal_date,monthly_cost_cents,notes,created_at FROM vendors WHERE 1=1`;args:=[]interface{}{};if q!=""{base+=` AND (name LIKE ? OR category LIKE ? OR contact LIKE ?)`;args=append(args,"%"+q+"%","%"+q+"%","%"+q+"%")};base+=` ORDER BY name`;rows,err:=db.Query(base,args...);if err!=nil{return nil,err};defer rows.Close();var out[]Vendor;for rows.Next(){var v Vendor;rows.Scan(&v.ID,&v.Name,&v.Category,&v.Contact,&v.Email,&v.SLADays,&v.RenewalDate,&v.MonthlyCostCents,&v.Notes,&v.CreatedAt);out=append(out,v)};return out,nil}
-func(db *DB)Update(v *Vendor){db.Exec(`UPDATE vendors SET name=?,category=?,contact=?,email=?,sla_days=?,renewal_date=?,monthly_cost_cents=?,notes=? WHERE id=?`,v.Name,v.Category,v.Contact,v.Email,v.SLADays,v.RenewalDate,v.MonthlyCostCents,v.Notes,v.ID)}
-func(db *DB)Delete(id int64){db.Exec(`DELETE FROM vendors WHERE id=?`,id)}
-func(db *DB)Stats()(map[string]interface{},error){var total int;var cost int64;db.QueryRow(`SELECT COUNT(*),COALESCE(SUM(monthly_cost_cents),0) FROM vendors`).Scan(&total,&cost);return map[string]interface{}{"vendors":total,"monthly_cost_cents":cost},nil}
+import ("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
+type DB struct{db *sql.DB}
+type Item struct{
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Description string `json:"description"`
+	Status string `json:"status"`
+	Category string `json:"category"`
+	Tags string `json:"tags"`
+	CreatedAt string `json:"created_at"`
+}
+func Open(d string)(*DB,error){if err:=os.MkdirAll(d,0755);err!=nil{return nil,err};db,err:=sql.Open("sqlite",filepath.Join(d,"consortium.db")+"?_journal_mode=WAL&_busy_timeout=5000");if err!=nil{return nil,err}
+db.Exec(`CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT DEFAULT '',status TEXT DEFAULT 'active',category TEXT DEFAULT '',tags TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')))`)
+return &DB{db:db},nil}
+func(d *DB)Close()error{return d.db.Close()}
+func genID()string{return fmt.Sprintf("%d",time.Now().UnixNano())}
+func now()string{return time.Now().UTC().Format(time.RFC3339)}
+func(d *DB)Create(e *Item)error{e.ID=genID();e.CreatedAt=now();_,err:=d.db.Exec(`INSERT INTO items(id,name,description,status,category,tags,created_at)VALUES(?,?,?,?,?,?,?)`,e.ID,e.Name,e.Description,e.Status,e.Category,e.Tags,e.CreatedAt);return err}
+func(d *DB)Get(id string)*Item{var e Item;if d.db.QueryRow(`SELECT id,name,description,status,category,tags,created_at FROM items WHERE id=?`,id).Scan(&e.ID,&e.Name,&e.Description,&e.Status,&e.Category,&e.Tags,&e.CreatedAt)!=nil{return nil};return &e}
+func(d *DB)List()[]Item{rows,_:=d.db.Query(`SELECT id,name,description,status,category,tags,created_at FROM items ORDER BY created_at DESC`);if rows==nil{return nil};defer rows.Close();var o []Item;for rows.Next(){var e Item;rows.Scan(&e.ID,&e.Name,&e.Description,&e.Status,&e.Category,&e.Tags,&e.CreatedAt);o=append(o,e)};return o}
+func(d *DB)Delete(id string)error{_,err:=d.db.Exec(`DELETE FROM items WHERE id=?`,id);return err}
+func(d *DB)Count()int{var n int;d.db.QueryRow(`SELECT COUNT(*) FROM items`).Scan(&n);return n}
