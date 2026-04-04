@@ -38,6 +38,7 @@ patch.Category=existing.Category};if patch.ContractEnd==""{
 patch.ContractEnd=existing.ContractEnd};if patch.Status==""{
 patch.Status=existing.Status};if patch.Notes==""{
 patch.Notes=existing.Notes}
+    if patch.AnnualSpend==0{patch.AnnualSpend=existing.AnnualSpend}
     s.db.Update(&patch);wj(w,200,s.db.Get(patch.ID))
 }
 func(s *Server)del(w http.ResponseWriter,r *http.Request){s.db.Delete(r.PathValue("id"));wj(w,200,map[string]string{"deleted":"ok"})}
